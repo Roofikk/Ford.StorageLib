@@ -1,4 +1,5 @@
 ﻿using Ford.SaveSystem;
+using Ford.SaveSystem.Data;
 using System.Collections.ObjectModel;
 
 namespace Ford.StorageTest
@@ -11,9 +12,9 @@ namespace Ford.StorageTest
             _storage = new Storage();
         }
 
-        public ICollection<HorseLocalSaveData> CreateHorses(int count = 10)
+        public ICollection<HorseData> CreateHorses(int count = 10)
         {
-            Collection<HorseLocalSaveData> horses = new();
+            Collection<HorseData> horses = new();
             DateTime now = DateTime.Now;
 
             for (int i = 0; i < count; i++)
@@ -39,9 +40,9 @@ namespace Ford.StorageTest
             return horses;
         }
 
-        public ICollection<LocalSaveData> CreateSaves(int count = 10)
+        public ICollection<SaveData> CreateSaves(int count = 10)
         {
-            Collection<LocalSaveData> saves = new();
+            Collection<SaveData> saves = new();
             DateTime now = DateTime.Now;
 
             for (int i = 0; i < count; i++)
@@ -53,7 +54,7 @@ namespace Ford.StorageTest
                     Description = $"Save description - {i}",
                     CreationDate = now,
                     LastUpdate = now,
-                    PathFileSave = string.Empty,
+                    SaveFileName = string.Empty,
                 });
             }
 

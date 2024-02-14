@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 
-namespace Ford.SaveSystem
+namespace Ford.SaveSystem.Data
 {
-    public class HorseLocalSaveData
+    public class HorseData
     {
         public string Id { get; set; } = null!;
         public string Name { get; set; } = null!;
@@ -16,6 +16,6 @@ namespace Ford.SaveSystem
         public DateTime DateCreation { get; set; }
         public DateTime LastUpdate { get; set; }
 
-        public ICollection<LocalSaveData>? Saves { get; set; }
+        public ICollection<SaveData>? Saves { get; set; }
     }
 }

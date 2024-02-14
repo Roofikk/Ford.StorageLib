@@ -1,7 +1,8 @@
-﻿using System;
+﻿using Ford.SaveSystem.Data;
+using System;
 using System.Collections.Generic;
 
-namespace Ford.SaveSystem
+namespace Ford.SaveSystem.Dto
 {
     public class CreationHorseData
     {
@@ -13,6 +14,6 @@ namespace Ford.SaveSystem
         public string? City { get; set; }
         public string? Region { get; set; }
         public string? Country { get; set; }
-        public ICollection<LocalSaveData>? Saves { get; set; }
+        public ICollection<SaveData>? Saves { get; set; }
     }
 }

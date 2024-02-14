@@ -1,6 +1,9 @@
+using Ford.SaveSystem.Data;
+using Ford.SaveSystem.Dto;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 
@@ -8,103 +11,97 @@ namespace Ford.SaveSystem
 {
     public class Storage
     {
-        private string _pathSave;
-        private readonly string horsesFileName = "horses.json";
+        private string _storagePath;
+        private string _savesPath;
+        private readonly string _horsesFileName = "horses.json";
+        private readonly string _storageSettingsFileName = "storageSettings.json";
 
         public Storage()
         {
-            _pathSave = Path.Combine(Environment.CurrentDirectory, "Saves");
+            _storagePath = Path.Combine(Environment.CurrentDirectory, "storage");
+            _savesPath = Path.Combine(_storagePath, "saves");
 
-            if (!Directory.Exists(_pathSave))
+            if (!Directory.Exists(_savesPath))
             {
-                Directory.CreateDirectory(_pathSave);
+                Directory.CreateDirectory(_savesPath);
             }
         }
 
-        public Storage(string pathSave)
+        public Storage(string storagePath)
         {
-            _pathSave = pathSave;
+            _storagePath = storagePath;
+            _savesPath = Path.Combine(_storagePath, "saves");
 
-            if (!Directory.Exists(_pathSave))
+            if (!Directory.Exists(_savesPath))
             {
-                Directory.CreateDirectory(_pathSave);
+                Directory.CreateDirectory(_savesPath);
             }
         }
 
         #region Horse CRUD
-        // переписать метод с использованием частичного считывани€, а не всего файла.
-        public HorseLocalSaveData? GetHorse(string id)
+        public ICollection<HorseData>? GetHorses()
         {
-            string pathHorses = Path.Combine(_pathSave, horsesFileName);
+            string pathHorses = Path.Combine(_storagePath, _horsesFileName);
 
-            if (!FileIsExists(pathHorses))
+            if (!File.Exists(pathHorses))
             {
                 return null;
             }
 
-            StreamReader sr = new(pathHorses);
-            HorseLocalSaveData? horseData = null;
+            ICollection<HorseData>? horseData = Array.Empty<HorseData>();
 
+            using (FileStream fs = File.Open(pathHorses, FileMode.Open))
+            using (StreamReader sr = new(fs))
             using (JsonTextReader reader = new(sr))
             {
                 reader.SupportMultipleContent = true;
                 var serializer = new JsonSerializer();
+
                 while (reader.Read())
                 {
-                    horseData = serializer.Deserialize<HorseLocalSaveData>(reader);
-
-                    if (horseData is not null)
+                    if (reader.TokenType == JsonToken.StartObject)
                     {
-                        if (horseData.Id == id)
-                        {
-                            break;
-                        }
+                        horseData = serializer.Deserialize<ArraySerializable<HorseData>>(reader)?.Items;
                     }
                 }
             }
 
-            sr.Dispose();
             return horseData;
         }
 
-        public IEnumerable<HorseLocalSaveData>? GetHorses()
+        public HorseData? GetHorse(string id)
         {
-            string pathHorses = Path.Combine(_pathSave, horsesFileName);
+            var horses = GetHorses();
 
-            if (!FileIsExists(pathHorses))
+            if (horses == null)
             {
                 return null;
             }
 
-            string json = "";
-
-            using (StreamReader sr = new StreamReader(pathHorses))
-            {
-                json = sr.ReadToEnd();
-            }
-
-            return JsonConvert.DeserializeObject<ArraySerializable<HorseLocalSaveData>>(json).Items;
+            var findHorse = horses.FirstOrDefault(h => h.Id == id);
+            return findHorse;
         }
 
-        // надо помимо добавлени€ проверить уже наличие этого объекта в файле.
-        // а как быстро пробежатьс€ по файлу, чтобы не выт€гивать целый объект и не провер€ть его -- вопрос
-        // также по хорошему не перезаписывать весь файл, а добавить в него json строку.
-        public HorseLocalSaveData? CreateHorse(CreationHorseData horseData)
+        public HorseData? CreateHorse(CreationHorseData horseData)
         {
+            ICollection<HorseData>? horses = GetHorses();
+            horses ??= new Collection<HorseData>();
+
             if (string.IsNullOrEmpty(horseData.Id))
             {
                 horseData.Id = Guid.NewGuid().ToString();
             }
-
-            var horses = GetHorses();
-            List<HorseLocalSaveData> horseList = new();
-
-            if (horses is not null)
+            else
             {
-                horseList = horses.ToList();
+                var horseExist = horses.FirstOrDefault(h => h.Id == horseData.Id);
+
+                if (horseExist is not null)
+                {
+                    return null;
+                }
             }
 
-            HorseLocalSaveData addHorse = new()
+            HorseData addHorse = new()
             {
                 Id = horseData.Id,
                 Name = horseData.Name,
@@ -119,31 +116,26 @@ namespace Ford.SaveSystem
                 Saves = horseData.Saves is null ? null : horseData.Saves
             };
 
-            horseList.Add(addHorse);
-            RewriteHorseFile(horseList, Path.Combine(_pathSave, horsesFileName));
+            horses.Add(addHorse);
+            RewriteHorseFile(horses);
             return addHorse;
         }
 
-        public HorseLocalSaveData? UpdateHorse(CreationHorseData horseData)
+        public HorseData? UpdateHorse(CreationHorseData horseData)
         {
             var horses = GetHorses();
-            List<HorseLocalSaveData> horseList = new();
 
             if (horses is null)
             {
                 return null;
             }
 
-            horseList = horses.ToList();
-            int existHorseIndex = horseList.FindIndex(h => h.Id == horseData.Id);
+            HorseData? existHorse = horses.FirstOrDefault(h => h.Id == horseData.Id);
 
-            if (existHorseIndex < 0)
+            if (existHorse is null)
             {
                 return null;
             }
-
-            var existHorse = horseList[existHorseIndex];
-            horseList.RemoveAt(existHorseIndex);
 
             //
             existHorse.Name = horseData.Name;
@@ -154,15 +146,18 @@ namespace Ford.SaveSystem
             existHorse.Region = horseData.Region;
             existHorse.Country = horseData.Country;
             existHorse.LastUpdate = DateTime.Now;
+
+            if (horseData.Saves is not null)
+            {
+                existHorse.Saves = horseData.Saves;
+            }
             //
 
-            horseList.Insert(existHorseIndex, existHorse);
-
-            RewriteHorseFile(horseList, Path.Combine(_pathSave, horsesFileName));
-
+            RewriteHorseFile(horses);
             return existHorse;
         }
 
+        // не забыть удалить сохранени€ лошади, поскольку они не нужны.
         public bool DeleteHorse(string id)
         {
             var horses = GetHorses();
@@ -172,28 +167,237 @@ namespace Ford.SaveSystem
                 return false;
             }
 
-            var horseList = horses.ToList();
-            var findHorse = horseList.FirstOrDefault(h => h.Id == id);
-            bool result = horseList.Remove(findHorse);
+            var findHorse = horses.FirstOrDefault(h => h.Id == id);
+
+            bool result = horses.Remove(findHorse);
 
             if (!result)
             {
                 return false;
             }
 
-            RewriteHorseFile(horseList, Path.Combine(_pathSave, horsesFileName));
+            
 
+            RewriteHorseFile(horses);
             return true;
         }
         #endregion
 
-        private bool FileIsExists(string path) => File.Exists(path);
+        #region Save CRUD
+        public ICollection<SaveBonesData>? GetSaves(string fileName)
+        {
+            string savePath = Path.Combine(_savesPath, fileName);
 
-        private void RewriteHorseFile(List<HorseLocalSaveData> horses, string path)
+            if (!File.Exists(savePath))
+            {
+                return null;
+            }
+
+            ICollection<SaveBonesData>? saves = null;
+
+            using (StreamReader sr = new(savePath))
+            using (JsonTextReader reader = new(sr))
+            {
+                reader.SupportMultipleContent = true;
+                var serializer = new JsonSerializer();
+
+                while (reader.Read())
+                {
+                    if (reader.TokenType == JsonToken.StartObject)
+                    {
+                        saves = serializer.Deserialize<ArraySerializable<SaveBonesData>>(reader)?.Items;
+                    }
+                }
+            }
+
+            return saves;
+        }
+
+        public SaveBonesData? GetSave(string fileName, string saveId)
+        {
+            List<SaveBonesData> saves = GetSaves(fileName).ToList();
+
+            if (saves is null)
+            {
+                return null;
+            }
+
+            return saves.FirstOrDefault(s => s.SaveId == saveId);
+        }
+
+        public SaveBonesData? GetSave(string saveId)
+        {
+            SaveData saveData = GetSaveInfo(saveId);
+            return GetSave(saveData.SaveFileName, saveId);
+        }
+
+        public SaveData GetSaveInfo(string saveId)
+        {
+            SaveData? save = null;
+
+            //var query = (from h in GetHorses()
+            //            from s in h.Saves
+            //            where s.Id == saveId
+            //            select s).First(s => s.Id == saveId);
+
+            save = GetHorses()
+                .SelectMany(h => h.Saves)
+                .FirstOrDefault(p => p.Id == saveId);
+
+            return save;
+        }
+
+        public SaveData? CreateSave(string horseId, CreateSaveDto saveData)
+        {
+            var horses = GetHorses();
+
+            if (horses is null)
+            {
+                return null;
+            }
+
+            HorseData? existingHorse = horses.FirstOrDefault(h => h.Id == horseId);
+
+            if (existingHorse is null)
+            {
+                return null;
+            }
+
+            string fileName = GetPathSaveFile();
+
+            saveData.Id ??= Guid.NewGuid().ToString();
+            existingHorse.Saves ??= new Collection<SaveData>();
+
+            SaveData save = new()
+            {
+                Id = saveData.Id,
+                Header = saveData.Header,
+                Description = saveData.Description,
+                Date = saveData.Date,
+                CreationDate = DateTime.Now,
+                LastUpdate = DateTime.Now,
+                SaveFileName = fileName
+            };
+
+            existingHorse.Saves.Add(save);
+            RewriteHorseFile(horses);
+
+            string pathSave = Path.Combine(_storagePath, fileName);
+            SaveBonesData saveBones = new()
+            {
+                SaveId = saveData.Id,
+                Bones = saveData.Bones
+            };
+
+            var saves = GetSaves(pathSave);
+
+            if (saves is null)
+            {
+                saves = [saveBones];
+            }
+            else
+            {
+                saves.Add(saveBones);
+            }
+
+            RewriteSaveBonesFile(pathSave, saves);
+            return save;
+        }
+
+        public SaveData? UpdateSave(UpdateSaveDto saveData)
+        {
+            var horses = GetHorses();
+
+            if (horses is null)
+            {
+                return null;
+            }
+
+            var save = horses.SelectMany(h => h.Saves).FirstOrDefault(s => s.Id == saveData.Id);
+
+            if (save is null)
+            {
+                return null;
+            }
+
+            save.Header = saveData.Header;
+            save.Description = saveData.Description;
+            save.Date = saveData.Date;
+            save.LastUpdate = DateTime.Now;
+
+            RewriteHorseFile(horses);
+            return save;
+        }
+
+        public void DeleteSave(string saveId)
+        {
+
+        }
+
+        public void DeleteSaves(string horseId)
+        {
+
+        }
+
+        private void DeleteCascadeSaves(string horseId)
+        {
+
+        }
+        #endregion
+
+        private string GetPathSaveFile()
+        {
+            string pathSettings = Path.Combine(_storagePath, _storageSettingsFileName);
+            string fileName = Guid.NewGuid().ToString() + ".json";
+
+            if (File.Exists(pathSettings))
+            {
+                using StreamReader sr = new StreamReader(pathSettings);
+                using JsonReader reader = new JsonTextReader(sr);
+
+                while (reader.Read())
+                {
+                    reader.SupportMultipleContent = true;
+                    var serializer = new JsonSerializer();
+                    if (reader.TokenType == JsonToken.StartObject)
+                    {
+                        var settings = serializer.Deserialize<StorageSettingsData>(reader) ?? throw new Exception("File not exists");
+                        fileName = settings.LastSaveFileName;
+                    }
+                }
+
+                FileInfo saveFile = new FileInfo(Path.Combine(_storagePath, fileName));
+                float fileSizeMb = saveFile.Length / (1024f * 1024f);
+
+                if (saveFile.Length < 10f)
+                {
+                    return fileName;
+                }
+            }
+
+            using StreamWriter sw = new StreamWriter(pathSettings);
+            using JsonWriter jsonWriter = new JsonTextWriter(sw);
+            JsonSerializer.CreateDefault().Serialize(jsonWriter, new StorageSettingsData()
+            {
+                LastSaveFileName = fileName
+            });
+
+            return fileName;
+        }
+
+        private void RewriteHorseFile(ICollection<HorseData> horses)
+        {
+            string path = Path.Combine(_storagePath, _horsesFileName);
+            using StreamWriter sw = new(path);
+            using JsonWriter jsonWriter = new JsonTextWriter(sw);
+            JsonSerializer.CreateDefault().Serialize(jsonWriter, new ArraySerializable<HorseData>(horses));
+        }
+
+        private void RewriteSaveBonesFile(string path, ICollection<SaveBonesData> saves)
         {
             using StreamWriter sw = new(path);
             using JsonWriter jsonWriter = new JsonTextWriter(sw);
-            JsonSerializer.CreateDefault().Serialize(jsonWriter, new ArraySerializable<HorseLocalSaveData>(horses));
+            JsonSerializer.CreateDefault().Serialize(jsonWriter, new ArraySerializable<SaveBonesData>(saves));
         }
     }
 }
