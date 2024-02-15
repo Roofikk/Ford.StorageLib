@@ -318,9 +318,6 @@ namespace Ford.SaveSystem
         {
             var saves = GetSerializableArrayFromFile<SaveBonesData>(pathSave).ToList() ?? throw new Exception($"Saves not serialized is {pathSave} file");
 
-            // надо проверить правильность написания. Есть большие сомнения в работе
-            //var query = saves.Where(s => saveIds.Any(id => s.SaveId == id));
-
             saves.RemoveAll(s => saveIds.Contains(s.SaveId));
             RewriteSaveBonesFile(pathSave, saves);
         }
