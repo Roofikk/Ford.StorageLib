@@ -48,10 +48,8 @@ namespace Ford.SaveSystem
                 return null;
             }
 
-            ICollection<HorseData>? horseData = Array.Empty<HorseData>();
-
-            using (FileStream fs = File.Open(pathHorses, FileMode.Open))
-            using (StreamReader sr = new(fs))
+            ICollection<HorseData>? horseData = GetSerializableArrayFromFile<HorseData>(pathHorses);
+            using (StreamReader sr = new(pathHorses))
             using (JsonTextReader reader = new(sr))
             {
                 reader.SupportMultipleContent = true;
@@ -168,6 +166,12 @@ namespace Ford.SaveSystem
             }
 
             var findHorse = horses.FirstOrDefault(h => h.Id == id);
+            var query = findHorse.Saves.GroupBy(s => s.SaveFileName).Select(q => new { FileName = q.Key, Ids = q.Select(id => id.Id)});
+
+            foreach (var path in query)
+            {
+                DeleteSaves(Path.Combine(_savesPath, path.FileName), path.Ids.ToArray());
+            }
 
             bool result = horses.Remove(findHorse);
 
@@ -175,8 +179,6 @@ namespace Ford.SaveSystem
             {
                 return false;
             }
-
-            
 
             RewriteHorseFile(horses);
             return true;
@@ -193,24 +195,7 @@ namespace Ford.SaveSystem
                 return null;
             }
 
-            ICollection<SaveBonesData>? saves = null;
-
-            using (StreamReader sr = new(savePath))
-            using (JsonTextReader reader = new(sr))
-            {
-                reader.SupportMultipleContent = true;
-                var serializer = new JsonSerializer();
-
-                while (reader.Read())
-                {
-                    if (reader.TokenType == JsonToken.StartObject)
-                    {
-                        saves = serializer.Deserialize<ArraySerializable<SaveBonesData>>(reader)?.Items;
-                    }
-                }
-            }
-
-            return saves;
+            return GetSerializableArrayFromFile<SaveBonesData>(savePath);
         }
 
         public SaveBonesData? GetSave(string fileName, string saveId)
@@ -235,11 +220,6 @@ namespace Ford.SaveSystem
         {
             SaveData? save = null;
 
-            //var query = (from h in GetHorses()
-            //            from s in h.Saves
-            //            where s.Id == saveId
-            //            select s).First(s => s.Id == saveId);
-
             save = GetHorses()
                 .SelectMany(h => h.Saves)
                 .FirstOrDefault(p => p.Id == saveId);
@@ -263,7 +243,7 @@ namespace Ford.SaveSystem
                 return null;
             }
 
-            string fileName = GetPathSaveFile();
+            string fileName = GetSaveFileName();
 
             saveData.Id ??= Guid.NewGuid().ToString();
             existingHorse.Saves ??= new Collection<SaveData>();
@@ -282,7 +262,7 @@ namespace Ford.SaveSystem
             existingHorse.Saves.Add(save);
             RewriteHorseFile(horses);
 
-            string pathSave = Path.Combine(_storagePath, fileName);
+            string pathSave = Path.Combine(_savesPath, fileName);
             SaveBonesData saveBones = new()
             {
                 SaveId = saveData.Id,
@@ -334,18 +314,19 @@ namespace Ford.SaveSystem
 
         }
 
-        public void DeleteSaves(string horseId)
+        private void DeleteSaves(string pathSave, string[] saveIds)
         {
+            var saves = GetSerializableArrayFromFile<SaveBonesData>(pathSave).ToList() ?? throw new Exception($"Saves not serialized is {pathSave} file");
 
-        }
+            // надо проверить правильность написания. Есть большие сомнения в работе
+            //var query = saves.Where(s => saveIds.Any(id => s.SaveId == id));
 
-        private void DeleteCascadeSaves(string horseId)
-        {
-
+            saves.RemoveAll(s => saveIds.Contains(s.SaveId));
+            RewriteSaveBonesFile(pathSave, saves);
         }
         #endregion
 
-        private string GetPathSaveFile()
+        private string GetSaveFileName()
         {
             string pathSettings = Path.Combine(_storagePath, _storageSettingsFileName);
             string fileName = Guid.NewGuid().ToString() + ".json";
@@ -366,7 +347,7 @@ namespace Ford.SaveSystem
                     }
                 }
 
-                FileInfo saveFile = new FileInfo(Path.Combine(_storagePath, fileName));
+                FileInfo saveFile = new FileInfo(Path.Combine(_savesPath, fileName));
                 float fileSizeMb = saveFile.Length / (1024f * 1024f);
 
                 if (saveFile.Length < 10f)
@@ -383,6 +364,28 @@ namespace Ford.SaveSystem
             });
 
             return fileName;
+        }
+
+        private ICollection<T>? GetSerializableArrayFromFile<T>(string path)
+        {
+            ICollection<T>? collection = null;
+
+            using (StreamReader sr = new(path))
+            using (JsonTextReader reader = new(sr))
+            {
+                reader.SupportMultipleContent = true;
+                var serializer = new JsonSerializer();
+
+                while (reader.Read())
+                {
+                    if (reader.TokenType == JsonToken.StartObject)
+                    {
+                        collection = serializer.Deserialize<ArraySerializable<T>>(reader)?.Items;
+                    }
+                }
+            }
+
+            return collection;
         }
 
         private void RewriteHorseFile(ICollection<HorseData> horses)

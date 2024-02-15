@@ -7,11 +7,9 @@ using System.Diagnostics;
 
 Storage storage = new();
 
-string id = Guid.NewGuid().ToString();
-
-storage.CreateHorse(new()
+HorseData? horse = storage.CreateHorse(new()
 {
-    Id = id,
+    Id = Guid.NewGuid().ToString(),
     Name = "Ford",
     BirthDate = DateTime.Now,
     Description = "Description",
@@ -19,17 +17,41 @@ storage.CreateHorse(new()
     Sex = "Male"
 });
 
-storage.UpdateHorse(new()
+for (int i = 0; i < 10; i++)
 {
-    Id = id,
-    Name = "Ford fixed",
+    storage.CreateSave(horse!.Id, new()
+    {
+        Id = Guid.NewGuid().ToString(),
+        Header = $"Horse name - {horse!.Name}, save - {i}",
+        Description = "Description",
+        Bones = [],
+        Date = DateTime.Now
+    });
+}
+
+HorseData? horse1 = storage.CreateHorse(new()
+{
+    Id = Guid.NewGuid().ToString(),
+    Name = "Ford2",
     BirthDate = DateTime.Now,
-    Description = "Description -",
-    City = "Everywhere",
+    Description = "Description2",
+    City = "There2",
     Sex = "Female"
 });
 
+for (int i = 0; i < 10; i++)
+{
+    storage.CreateSave(horse1!.Id, new()
+    {
+        Id = Guid.NewGuid().ToString(),
+        Header = $"Horse name - {horse1!.Name}, save - {i}",
+        Description = "Description",
+        Bones = [],
+        Date = DateTime.Now
+    });
+}
 
+storage.DeleteHorse(horse!.Id);
 
 static void Create500Horse()
 {
