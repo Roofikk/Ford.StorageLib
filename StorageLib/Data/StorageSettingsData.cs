@@ -1,7 +1,7 @@
 ﻿namespace Ford.SaveSystem.Data
 {
-    public class StorageSettingsData
+    internal class StorageSettingsData
     {
-        public string LastSaveFileName { get; set; }
+        public string LastSaveFileName { get; set; } = null!;
     }
 }

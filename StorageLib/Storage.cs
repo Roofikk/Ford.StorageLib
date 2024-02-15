@@ -16,8 +16,11 @@ namespace Ford.SaveSystem
         private readonly string _horsesFileName = "horses.json";
         private readonly string _storageSettingsFileName = "storageSettings.json";
 
+        private List<HorseData> _horses;
+
         public Storage()
         {
+            _horses = new();
             _storagePath = Path.Combine(Environment.CurrentDirectory, "storage");
             _savesPath = Path.Combine(_storagePath, "saves");
 
@@ -29,6 +32,7 @@ namespace Ford.SaveSystem
 
         public Storage(string storagePath)
         {
+            _horses = new();
             _storagePath = storagePath;
             _savesPath = Path.Combine(_storagePath, "saves");
 
@@ -41,6 +45,11 @@ namespace Ford.SaveSystem
         #region Horse CRUD
         public ICollection<HorseData>? GetHorses()
         {
+            if (_horses.Count > 0)
+            {
+                return _horses;
+            }
+
             string pathHorses = Path.Combine(_storagePath, _horsesFileName);
 
             if (!File.Exists(pathHorses))
@@ -64,7 +73,8 @@ namespace Ford.SaveSystem
                 }
             }
 
-            return horseData;
+            _horses = horseData.ToList();
+            return _horses;
         }
 
         public HorseData? GetHorse(string id)
@@ -309,9 +319,33 @@ namespace Ford.SaveSystem
             return save;
         }
 
-        public void DeleteSave(string saveId)
+        public bool DeleteSave(string horseId, string saveId)
         {
+            var horses = GetHorses();
 
+            if (horses is null)
+            {
+                return false;
+            }
+
+            var savesInfo = horses.FirstOrDefault(h => h.Id == horseId).Saves;
+            var saveInfo = savesInfo.FirstOrDefault(s => s.Id == saveId);
+            var saves = GetSaves(saveInfo.SaveFileName);
+
+            if (saves is null)
+            {
+                return false;
+            }
+
+            var saveData = saves.FirstOrDefault(s => s.SaveId == saveId);
+
+            saves.Remove(saveData);
+            RewriteSaveBonesFile(saveInfo.SaveFileName, saves);
+
+            savesInfo!.Remove(saveInfo);
+            RewriteHorseFile(horses);
+
+            return true;
         }
 
         private void DeleteSaves(string pathSave, string[] saveIds)
@@ -395,6 +429,12 @@ namespace Ford.SaveSystem
 
         private void RewriteSaveBonesFile(string path, ICollection<SaveBonesData> saves)
         {
+            if (saves.Count() == 0)
+            {
+                File.Delete(path);
+                return;
+            }
+
             using StreamWriter sw = new(path);
             using JsonWriter jsonWriter = new JsonTextWriter(sw);
             JsonSerializer.CreateDefault().Serialize(jsonWriter, new ArraySerializable<SaveBonesData>(saves));
